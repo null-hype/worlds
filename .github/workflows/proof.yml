@@ -1,0 +1,26 @@
+name: Exact-world proof
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Capture, restore and judge the canonical example
+        uses: dagger/dagger-for-github@v8.4.1
+        with:
+          version: '0.21.8'
+          verb: call
+          args: proof export --path runs/proof
+      - name: Keep inspectable worlds, verdicts and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-world-proof
+          path: runs/proof
+          if-no-files-found: error
