@@ -3,11 +3,15 @@
 # snapshot id, or a label for the newest with it) and judges it with
 # Reconcile.pkl. The store knows nothing of this.
 #
-#   bash delivery/judge.sh <snapshot id | label>     # from the repo root
+#   bash delivery/judge.sh <snapshot id | label> [valid | pass]   # from the repo root
 #
-# Exits 0 when Jev agreed in a valid run, 1 when not (the verdict says which),
-# 2 when no world has the label.
+# What it requires of the verdict is the second argument: valid (the default),
+# the world and the protocol held, so Jev's agreeing or not is a finding; or
+# pass, a valid run on which Jev agreed. Exits 0 when the verdict has it, 1
+# when not (the verdict says why), 2 when no world has the label.
 set -euo pipefail
+requires="${2:-valid}"
+[[ $requires = valid || $requires = pass ]] || { echo "requires valid or pass, not $requires" >&2; exit 2; }
 export WORLD_CHECK=registered-delivery
 restored="$(bash world/world.sh restore "$1")" || exit $?
 read -r id world <<< "$restored"
@@ -27,4 +31,4 @@ done
 jq -r '.movements | to_entries[] | "  \(.value * 100 | round / 100)  \(.key)"' "$verdict"
 jq -r '"Verdict: " + .verdict' "$verdict"
 jq -r '"Next: " + .next' "$verdict"
-jq -e .pass "$verdict" > /dev/null || { jq -r '.verdict + " [world " + .world + "]"' "$verdict" >&2; exit 1; }
+jq -e --arg k "$requires" '.[$k]' "$verdict" > /dev/null || { jq -r '.verdict + " [world " + .world + "]"' "$verdict" >&2; exit 1; }
