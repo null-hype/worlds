@@ -61,8 +61,8 @@ jq -e 'all(.[]; .)' /installed.json > /dev/null || { echo "witness does not show
 	return err
 }
 
-// RegisteredDelivery: the delivery experiment came out as registered. It is
-// PeopleCanInstallWitness's world, judged also against what the planner
+// RegisteredDelivery: the delivery experiment was judged against what was
+// registered for it. It is PeopleCanInstallWitness's world, judged also against what the planner
 // predicted in Pass (delivery/Predicted.pkl): what the work
 // should do to each step of Jules's plan. The planner registers once Jules has
 // presented its plan and before the plan is approved, so the predictions bind
@@ -76,9 +76,13 @@ jq -e 'all(.[]; .)' /installed.json > /dev/null || { echo "witness does not show
 // predicted steps, Jev answered on Delivery.pkl's model, and the work moved
 // each step as predicted, by Delivery.pkl's `moved`.
 //
+// The check is green when the run is valid: the world and the protocol held,
+// so Jev's agreeing or not is a finding either way, and the verdict says which.
+// Whether Jev agreed is JevAgreed's, judged from the same snapshot.
+//
 // The world is a restic snapshot (world/world.sh): the check captures the
 // completed run labelled observed, then judges the snapshot it selects by
-// `label`, restored apart. REGISTEREDDELIVERY_LABEL=synthetic judges a world
+// `label`, restored apart, in a container the producer never ran in. REGISTEREDDELIVERY_LABEL=synthetic judges a world
 // CaptureWorld made instead, without running Jules.
 //
 //	pass-cli run --env-file .env -- dagger check registered-delivery   # stops at the plan
@@ -125,7 +129,7 @@ func (m *Worlds) RegisteredDelivery(
 	store := Store{resticRepository, resticPassword, gcpServiceAccountKey}
 	// A world other than the one this run makes is judged as it was snapshotted.
 	if label != observedLabel {
-		return judged(ctx, store, base(harness), label)
+		return judged(ctx, store, base(harness), label, requiresValid)
 	}
 	planned := m.planned(harness, plannerToken, judgeToken, run)
 	// The work waits for the planner: the predictions as registered now, for this plan.
@@ -158,10 +162,41 @@ func (m *Worlds) RegisteredDelivery(
 	if err != nil {
 		return err
 	}
-	return judged(ctx, store, produced, id)
+	return judged(ctx, store, base(harness), id, requiresValid)
+}
+
+// JevAgreed: in the newest world with `label`, Jev agreed. It runs nothing:
+// it restores the snapshot RegisteredDelivery captured (or CaptureWorld made)
+// and requires of the same verdict that the run was valid and that the work
+// moved each step as registered. A valid disagreement is RegisteredDelivery
+// green and JevAgreed red.
+//
+// +check
+// +cache="never"
+func (m *Worlds) JevAgreed(
+	ctx context.Context,
+	// +defaultPath="/"
+	// +ignore=["node_modules", ".git", "dagger", ".jules", "runs", "**/test-results", "**/.priorities", "**/.witness"]
+	harness *dagger.Directory,
+	// Which world to judge: a snapshot id, or a label for the newest with it.
+	// +default="observed"
+	label string,
+	// +optional
+	resticRepository *dagger.Secret,
+	// +optional
+	resticPassword *dagger.Secret,
+	// +optional
+	gcpServiceAccountKey *dagger.Secret,
+) error {
+	store := Store{resticRepository, resticPassword, gcpServiceAccountKey}
+	return judged(ctx, store, base(harness), label, requiresPass)
 }
 
 const (
+	// What judge.sh requires of the verdict: a valid run, or one Jev agreed in.
+	requiresValid = "valid"
+	requiresPass  = "pass"
+
 	observedLabel = "observed"
 	// What judges these worlds: the store tags them with it.
 	checkName = "registered-delivery"
@@ -170,11 +205,11 @@ const (
 // The judge: restores the world (a snapshot id, or a label for the newest with
 // it) from the store, apart from where it was made, and judges it with
 // Reconcile.pkl (delivery/judge.sh); the output names the snapshot. An error
-// is a verdict that is not green.
-func judged(ctx context.Context, store Store, judge *dagger.Container, snapshot string) error {
+// is a verdict without what `requires` names.
+func judged(ctx context.Context, store Store, judge *dagger.Container, snapshot, requires string) error {
 	_, err := store.in(judge).
 		WithEnvVariable("WORLD_CHECK", checkName).
-		WithExec([]string{"bash", "delivery/judge.sh", snapshot}).
+		WithExec([]string{"bash", "delivery/judge.sh", snapshot, requires}).
 		Sync(ctx)
 	return err
 }

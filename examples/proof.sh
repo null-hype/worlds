@@ -26,13 +26,15 @@ rm -rf "$out/producer"
 printf '%s\n' "$old" > "$out/run7.id"
 printf '%s\n' "$new" > "$out/passing.id"
 
-# An expected disagreement is evidence. A failed instrument must still fail.
-status=0
-VERDICT="$out/run7.verdict.json" bash delivery/judge.sh "$old" > "$out/run7.log" 2>&1 || status=$?
+# An expected disagreement is evidence: the run is valid, so the judge is green;
+# requiring Jev's agreement as well, it is red. A failed instrument must still fail.
+VERDICT="$out/run7.verdict.json" bash delivery/judge.sh "$old" > "$out/run7.log" 2>&1
 cat "$out/run7.log"
+status=0
+bash delivery/judge.sh "$old" pass > /dev/null 2>&1 || status=$?
 test "$status" -eq 1
 jq -e --arg id "$old" '.world == $id and .valid and (.measuredPass | not) and (.pass | not)' "$out/run7.verdict.json" >/dev/null
-VERDICT="$out/passing.verdict.json" bash delivery/judge.sh "$new" > "$out/passing.log" 2>&1
+VERDICT="$out/passing.verdict.json" bash delivery/judge.sh "$new" pass > "$out/passing.log" 2>&1
 jq -e --arg id "$new" '.world == $id and .valid and .measuredPass and .pass' "$out/passing.verdict.json" >/dev/null
 read -r latest restored <<< "$(bash world/world.sh restore proof)"
 test "$latest" = "$new"
