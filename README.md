@@ -60,7 +60,7 @@ export RESTIC_REPOSITORY="$PWD/runs/proof/restic" RESTIC_PASSWORD=local-proof
 bash delivery/judge.sh "$(cat runs/proof/run7.id)"
 ```
 
-An expected valid disagreement exits **1**; inspect `Verdict:` rather than treating every nonzero exit as a broken instrument. A passing agreement exits **0**; a missing world exits **2**. These local demo repositories use a public demo password and contain only synthetic records.
+A valid run exits **0** whether Jev agreed or not; `Verdict:` says which. A run whose world or protocol did not hold exits **1**, and so does a valid disagreement when you require agreement (`judge.sh <id> pass`). A missing world exits **2**. These local demo repositories use a public demo password and contain only synthetic records.
 
 ## What is preserved—and what is not
 

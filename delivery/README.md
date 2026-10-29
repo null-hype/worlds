@@ -83,8 +83,8 @@ without running Jules: `dagger call capture-world --world delivery/worlds/run7
 verdict through its snapshot. `bash delivery/judge.test.sh` tests capture,
 selection by label, restore and judgement against a disposable repository.
 `observed` runs the delivery and snapshots it; it does not select an earlier
-observed world, so an old one cannot yet be judged again without asking Jules
-anew. The repository is the shared one behind `pass://infra/restic`, which
+observed world. `dagger check jev-agreed` does: it judges the newest observed
+world again without asking Jules anew. The repository is the shared one behind `pass://infra/restic`, which
 `.env` passes to both functions as secrets (`RESTIC_REPOSITORY`, `RESTIC_PASSWORD`,
 `GCP_SERVICE_ACCOUNT_KEY`), so a snapshot id outlasts the engine and can be
 judged again from any machine with the same access. Without them the worlds go
@@ -102,9 +102,12 @@ and Jev (did each step move as registered). A run whose world or protocol did
 not hold is not valid and says nothing of Jev; the verdict names which. A run
 where both held is valid, and what Jev did is a finding either way: agreement
 turns the experiment green, and disagreement, "valid finding: Jev
-disagreement", turns it red without making the run a failed one. The check
-exits non-zero for both a run that is not valid and a red experiment, and its
-last line says which. The threshold (`moved` in `Delivery.pkl`) is not tuned
+disagreement", turns it red without making the run a failed one. So the two
+are two checks: `registered-delivery` is green when the run is valid, and
+`jev-agreed`, which runs nothing and judges the newest observed snapshot (or
+the label or id `JEVAGREED_LABEL` names), is green when it is valid and Jev
+agreed. A broken instrument fails both; a valid disagreement fails only
+`jev-agreed`. The threshold (`moved` in `Delivery.pkl`) is not tuned
 to a red result.
 
 Run 7 is such a finding, kept as a frozen falsification case: the repaired feature installed
