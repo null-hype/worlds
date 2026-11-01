@@ -373,6 +373,11 @@ func withLogins(c *dagger.Container, plannerToken, judgeToken *dagger.Secret) *d
 for role in "$@"; do
   token="$(printenv "$(echo "$role" | tr a-z A-Z)_TOKEN" || true)"
   [ -n "$token" ] || { echo "the $role's Pass token is missing (--$role-token)" >&2; exit 1; }
+  # A cached plan already holds a session in /pass/$role, and pass-cli refuses to
+  # log in over one ("Already authenticated"), live or expired. End it first;
+  # the logout may fail when the session is gone or expired, which is fine.
+  PROTON_PASS_SESSION_DIR="/pass/$role" pass-cli logout >&2 || true
+  rm -rf "/pass/$role"
   PROTON_PASS_PERSONAL_ACCESS_TOKEN="$token" PROTON_PASS_SESSION_DIR="/pass/$role" pass-cli login >&2
 done
 `)
