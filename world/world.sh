@@ -7,13 +7,16 @@
 # Its tags are provenance: check=<WORLD_CHECK>, label=<how it came to be:
 # observed, synthetic, ...>, and run=<key> when it has one. Snapshots are
 # kept under one host, so worlds made in different containers are one group.
+# delivery=<id> names the delivery that made the world, so the world of one run
+# can be selected by it and no other.
 #
 #   export RESTIC_REPOSITORY=... RESTIC_PASSWORD=... WORLD_CHECK=<what judges it>
-#   bash world/world.sh capture <dir> <label> [run]   # prints the snapshot's exact id
-#   bash world/world.sh restore <id | label>           # prints where it was restored
+#   bash world/world.sh capture <dir> <label> [run [delivery]]   # prints the snapshot's exact id
+#   bash world/world.sh restore <id | label | delivery=<id>>      # prints where it was restored
 #
 # restore given an id restores exactly that snapshot; given a label, the newest
-# world with it. It names the world on stderr. Exit 2 when there is no such world.
+# world with it; given delivery=<id>, the newest world that delivery made. It
+# names the world on stderr. Exit 2 when there is no such world.
 set -euo pipefail
 : "${RESTIC_REPOSITORY:?the restic repository the worlds are in}"
 : "${RESTIC_PASSWORD:?its password}"
@@ -26,14 +29,19 @@ snapshot_of() {
     restic snapshots "$1" --json | jq -r '.[0].id // empty'
     return
   fi
+  if [[ $1 == delivery=* ]]; then
+    restic snapshots --tag "check=$WORLD_CHECK,$1" --json | jq -r 'sort_by(.time) | last | .id // empty'
+    return
+  fi
   restic snapshots --tag "check=$WORLD_CHECK,label=$1" --json | jq -r 'sort_by(.time) | last | .id // empty'
 }
 
 capture_world() {
-  local dir=$1 label=$2 run=${3:-} tags short
+  local dir=$1 label=$2 run=${3:-} delivery=${4:-} tags short
+  [[ $delivery != *,* ]] || { echo "a delivery id cannot hold a comma: $delivery" >&2; exit 2; }
   [ -n "$(ls -A "$dir" 2>/dev/null)" ] || { echo "$dir is not a world: it is empty or missing" >&2; exit 2; }
   restic cat config > /dev/null 2>&1 || restic init >&2
-  tags="check=$WORLD_CHECK,label=$label${run:+,run=$run}"
+  tags="check=$WORLD_CHECK,label=$label${run:+,run=$run}${delivery:+,delivery=$delivery}"
   short="$(restic backup "$dir" --host "$host" --tag "$tags" --json | jq -r 'select(.message_type == "summary").snapshot_id')"
   restic snapshots "$short" --json | jq -r '.[0].id'
 }
@@ -60,5 +68,5 @@ restore_world() {
 case "${1:-}" in
   capture) shift; capture_world "$@" ;;
   restore) shift; restore_world "$@" ;;
-  *) echo "usage: world.sh capture <dir> <label> [run] | restore <id|label>" >&2; exit 64 ;;
+  *) echo "usage: world.sh capture <dir> <label> [run [delivery]] | restore <id|label|delivery=id>" >&2; exit 64 ;;
 esac

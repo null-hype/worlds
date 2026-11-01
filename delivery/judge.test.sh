@@ -28,18 +28,33 @@ ok "another label selects another world" '[ "$idp" != "$id7" ]'
 # Restoring and evaluating it; run 7 as the pkl test has it.
 out="$(VERDICT="$(mktemp -d)/verdict.json" $world synthetic 2>&1)"; code=$?
 ok "run 7 through its snapshot is a valid finding: Jev disagreement" 'grep -q "^Verdict: valid finding: Jev disagreement" <<< "$out"'
-ok "and exits 1 for it" '[ "$code" = 1 ]'
+ok "a valid run exits 0, whatever Jev did" '[ "$code" = 0 ]'
+$world synthetic pass > /dev/null 2>&1; code=$?
+ok "requiring Jev's agreement, it exits 1" '[ "$code" = 1 ]'
 ok "the output names the world it judged" 'grep -q "^World: $id7 " <<< "$out"'
 ok "its movements are run 7's" 'grep -q "  0.02  Create .src/witness/devcontainer-feature.json" <<< "$out" && grep -q "  -0.09  Create .src/witness/install.sh" <<< "$out"'
 
 # The same check on another world.
 out="$($world agreeing 2>&1)"; code=$?
 ok "the first passing run through its snapshot is a valid finding: Jev agreement" 'grep -q "^Verdict: valid finding: Jev agreement" <<< "$out" && [ "$code" = 0 ]'
+$world agreeing pass > /dev/null 2>&1; code=$?
+ok "requiring Jev's agreement, it exits 0" '[ "$code" = 0 ]'
 
 # An exact id judges exactly that world, whatever is newer under its label.
 idn="$($store capture delivery/worlds/first-passing synthetic)"
 out="$($world "$id7" 2>&1)"
 ok "an id judges that snapshot, not the newest with its label" 'grep -q "^World: $id7 " <<< "$out" && grep -q "^Verdict: valid finding: Jev disagreement" <<< "$out"'
+
+# Judging the world of one delivery, not the newest of its label.
+idd="$($store capture delivery/worlds/run7 observed run7 delivery-a)"
+$store capture delivery/worlds/first-passing observed first-passing delivery-b > /dev/null
+out="$($world delivery=delivery-a pass 2>&1)"; code=$?
+ok "a delivery's world is judged, not the newer observed one: run 7 is not agreed" \
+  'grep -q "^World: $idd " <<< "$out" && grep -q "^Verdict: valid finding: Jev disagreement" <<< "$out" && [ "$code" = 1 ]'
+out="$($world observed pass 2>&1)"; code=$?
+ok "the label alone judges the newest observed world, here another delivery's" 'grep -q "Jev agreement" <<< "$out" && [ "$code" = 0 ]'
+$world delivery=delivery-c > /dev/null 2>&1; code=$?
+ok "a delivery with no world exits 2" '[ "$code" = 2 ]'
 
 # The snapshot is the world: what it was made from can change.
 cp -r delivery/worlds/run7 "$RESTIC_REPOSITORY.src" && $store capture "$RESTIC_REPOSITORY.src" mutable > /dev/null

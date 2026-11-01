@@ -17,6 +17,11 @@ jobs:
           version: '0.21.8'
           verb: call
           args: proof export --path runs/proof
+      - name: The module compiles and lists both checks
+        run: |
+          dagger check -l | tee checks.txt
+          grep -q 'registered-delivery' checks.txt
+          grep -q 'jev-agreed' checks.txt
       - name: Keep inspectable worlds, verdicts and logs
         if: always()
         uses: actions/upload-artifact@v4

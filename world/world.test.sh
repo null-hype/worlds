@@ -32,4 +32,25 @@ ok "a label no world has exits 2" '[ "$code" = 2 ]'
 WORLD_CHECK=another $world restore first > /dev/null 2>&1; code=$?
 ok "worlds of another check are not selected" '[ "$code" = 2 ]'
 
+# The world one delivery made: selected by it, whatever else shares its label.
+idd1="$($world capture "$src" shared run2 d-1)"
+echo three > "$src/a.txt"
+idd2="$($world capture "$src" shared run2 d-2)"
+echo four > "$src/a.txt"
+idd3="$($world capture "$src" shared run2)"
+ok "a world made by a delivery is tagged with it" \
+  '[ "$(restic snapshots "$idd1" --json | jq -c ".[0].tags | sort")" = "[\"check=anything\",\"delivery=d-1\",\"label=shared\",\"run=run2\"]" ]'
+read -r got at <<< "$($world restore shared 2> /dev/null)"
+ok "the label selects the newest, which is not that delivery's" '[ "$got" = "$idd3" ]'
+read -r got at <<< "$($world restore delivery=d-1 2> /dev/null)"
+ok "delivery=<id> selects that delivery's world, though it is not the newest" '[ "$got" = "$idd1" ] && [ "$(cat "$at/a.txt")" = two ]'
+read -r got at <<< "$($world restore delivery=d-2 2> /dev/null)"
+ok "and another delivery's selects its own" '[ "$got" = "$idd2" ] && [ "$(cat "$at/a.txt")" = three ]'
+$world restore delivery=d-3 > /dev/null 2>&1; code=$?
+ok "a delivery that made no world exits 2" '[ "$code" = 2 ]'
+WORLD_CHECK=another $world restore delivery=d-1 > /dev/null 2>&1; code=$?
+ok "worlds of another check are not selected by delivery either" '[ "$code" = 2 ]'
+$world capture "$src" shared run2 a,b > /dev/null 2>&1; code=$?
+ok "a delivery id that cannot be a tag is refused" '[ "$code" = 2 ]'
+
 echo; [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
