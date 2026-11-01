@@ -19,8 +19,18 @@ func (m *Worlds) PassSessionCacheProof(ctx context.Context) (string, error) {
 set -eu
 dir=$PROTON_PASS_SESSION_DIR
 now=$(cat /clock/now)
+if [ "$1" = logout ]; then
+  rm -f "$dir/issued"
+  exit 0
+fi
 if [ "$1" = login ]; then
   [ -n "${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}" ] || exit 2
+  # Like the real client: a session in the directory, expired or not, blocks login.
+  if [ -e "$dir/issued" ]; then
+    echo 'Client is already authenticated. Log out if you want to log in again' >&2
+    echo 'Error: Already authenticated' >&2
+    exit 1
+  fi
   mkdir -p "$dir"
   printf '%s\n' "$now" > "$dir/issued"
   exit 0
