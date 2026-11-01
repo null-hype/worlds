@@ -24,3 +24,5 @@ jobs:
           name: exact-world-proof
           path: runs/proof
           if-no-files-found: error
+      - name: Reject expired cached Pass sessions
+        run: bash delivery/pass-session.test.sh

@@ -102,6 +102,10 @@ func (m *Worlds) RegisteredDelivery(
 	// plan, so the planner can register for it; under another, Jules is asked anew.
 	// +default="registered"
 	run string,
+	// The rerun delivery ID, separate from the experiment's stable run key.
+	// When omitted (a manual check), use a fresh authentication cache key.
+	// +optional
+	delivery string,
 	// Which world to judge, by its snapshot's label: observed runs the
 	// delivery and snapshots what it made; any other (synthetic) judges the
 	// newest snapshot with that label, made by CaptureWorld. In .env:
@@ -127,9 +131,12 @@ func (m *Worlds) RegisteredDelivery(
 	if label != observedLabel {
 		return judged(ctx, store, base(harness), label)
 	}
+	if delivery == "" {
+		delivery = time.Now().UTC().Format(time.RFC3339Nano)
+	}
 	planned := m.planned(harness, plannerToken, judgeToken, run)
 	// The work waits for the planner: the predictions as registered now, for this plan.
-	ready := planned.
+	ready := withFreshPassLogins(planned, delivery, "judge").
 		WithEnvVariable("READ_AT", time.Now().UTC().Format(time.RFC3339Nano)).
 		WithExec([]string{"sh", "-c", "set -eu; node delivery/registered.mjs > /registered.json; node delivery/ready.mjs /registered.json /runs/plan/priorities.json"},
 			dagger.ContainerWithExecOpts{Expect: dagger.ReturnTypeAny})
@@ -144,13 +151,15 @@ func (m *Worlds) RegisteredDelivery(
 		}
 		return fmt.Errorf("%s", waiting)
 	}
-	delivered, err := m.installedWitness(ctx, worked(planned), repairs, logLines)
+	// Work also reads through the agents' sessions. Keep the plan cached, but
+	// do not hand its expired planner/judge sessions to an uncached work step.
+	delivered, err := m.installedWitness(ctx, worked(withFreshPassLogins(planned, delivery, "planner", "judge")), repairs, logLines)
 	if err != nil {
 		return err
 	}
 	// The predictions as read now (whatever the world's cache) are this
 	// experiment's part of the world; the rest is what Playwright showed.
-	produced := playwrightEvidence(delivered).
+	produced := withFreshPassLogins(playwrightEvidence(delivered), delivery, "judge").
 		WithEnvVariable("READ_AT", time.Now().UTC().Format(time.RFC3339Nano)).
 		WithExec([]string{"sh", "-c", "node delivery/registered.mjs > " + worldDir + "/registered.json"})
 	// The verdict is judged from the snapshot, by its exact id, not from here.
@@ -360,12 +369,21 @@ func withLogins(c *dagger.Container, plannerToken, judgeToken *dagger.Secret) *d
 	if judgeToken != nil {
 		c = c.WithSecretVariable("JUDGE_TOKEN", judgeToken)
 	}
-	return c.WithNewFile("/logins.sh", `for role in planner judge; do
+	return c.WithNewFile("/logins.sh", `[ "$#" -gt 0 ] || set -- planner judge
+for role in "$@"; do
   token="$(printenv "$(echo "$role" | tr a-z A-Z)_TOKEN" || true)"
   [ -n "$token" ] || { echo "the $role's Pass token is missing (--$role-token)" >&2; exit 1; }
   PROTON_PASS_PERSONAL_ACCESS_TOKEN="$token" PROTON_PASS_SESSION_DIR="/pass/$role" pass-cli login >&2
 done
 `)
+}
+
+// A cached plan contains the Pass sessions it logged in with, and those expire
+// after two hours. Secret values do not invalidate Dagger's cache: the delivery
+// must enter the graph BEFORE login, while the plan remains keyed by run.
+func withFreshPassLogins(c *dagger.Container, delivery string, roles ...string) *dagger.Container {
+	args := append([]string{"bash", "-ec", `. /logins.sh "$@"`, "pass-login"}, roles...)
+	return c.WithEnvVariable("PASS_LOGIN_DELIVERY", delivery).WithExec(args)
 }
 
 // Pkl, the version the jev feature installs, on the container's PATH.
