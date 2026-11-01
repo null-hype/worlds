@@ -62,9 +62,9 @@ jq -e 'all(.[]; .)' /installed.json > /dev/null || { echo "witness does not show
 }
 
 // RegisteredDelivery: the delivery experiment was judged against what was
-// registered for it. It is PeopleCanInstallWitness's world, judged also against what the planner
-// predicted in Pass (delivery/Predicted.pkl): what the work
-// should do to each step of Jules's plan. The planner registers once Jules has
+// registered for it. It is PeopleCanInstallWitness's world, judged also
+// against what the planner predicted in Pass (delivery/Predicted.pkl): what
+// the work should do to each step of Jules's plan. The planner registers once Jules has
 // presented its plan and before the plan is approved, so the predictions bind
 // to the plan as presented and are fixed before any work: the check runs the
 // plan, and stops there, printing its steps, until the planner has registered
@@ -82,8 +82,10 @@ jq -e 'all(.[]; .)' /installed.json > /dev/null || { echo "witness does not show
 //
 // The world is a restic snapshot (world/world.sh): the check captures the
 // completed run labelled observed, then judges the snapshot it selects by
-// `label`, restored apart, in a container the producer never ran in. REGISTEREDDELIVERY_LABEL=synthetic judges a world
-// CaptureWorld made instead, without running Jules.
+// `label`, restored apart, in a container the producer never ran in.
+// REGISTEREDDELIVERY_LABEL=synthetic judges a world CaptureWorld made instead,
+// without running Jules. The world it makes is tagged with `delivery`, and its
+// output names the snapshot, so JevAgreed can judge that world and no other.
 //
 //	pass-cli run --env-file .env -- dagger check registered-delivery   # stops at the plan
 //	node delivery/register.mjs <predictions.json>                      # the planner
@@ -167,18 +169,27 @@ func (m *Worlds) RegisteredDelivery(
 		WithEnvVariable("READ_AT", time.Now().UTC().Format(time.RFC3339Nano)).
 		WithExec([]string{"sh", "-c", "node delivery/registered.mjs > " + worldDir + "/registered.json"})
 	// The verdict is judged from the snapshot, by its exact id, not from here.
-	id, err := store.Capture(ctx, produced, checkName, observedLabel, run)
+	id, err := store.Capture(ctx, produced, checkName, observedLabel, run, delivery)
 	if err != nil {
 		return err
 	}
 	return judged(ctx, store, base(harness), id, requiresValid)
 }
 
-// JevAgreed: in the newest world with `label`, Jev agreed. It runs nothing:
-// it restores the snapshot RegisteredDelivery captured (or CaptureWorld made)
+// JevAgreed: in the world selected by `world`, Jev agreed. It runs nothing: it
+// restores that snapshot (one RegisteredDelivery captured or CaptureWorld made)
 // and requires of the same verdict that the run was valid and that the work
 // moved each step as registered. A valid disagreement is RegisteredDelivery
 // green and JevAgreed red.
+//
+// To judge the run RegisteredDelivery just made, name its world: the snapshot
+// id its output gives, or delivery=<id> for the delivery key it was given.
+// The default, the newest world labelled observed, is whichever was made last,
+// which is not necessarily the run being judged. The output names the snapshot
+// it judged.
+//
+//	dagger check registered-delivery --delivery 2026-11-01T10:00:00Z
+//	dagger check jev-agreed --world delivery=2026-11-01T10:00:00Z
 //
 // +check
 // +cache="never"
@@ -187,9 +198,11 @@ func (m *Worlds) JevAgreed(
 	// +defaultPath="/"
 	// +ignore=["node_modules", ".git", "dagger", ".jules", "runs", "**/test-results", "**/.priorities", "**/.witness"]
 	harness *dagger.Directory,
-	// Which world to judge: a snapshot id, or a label for the newest with it.
+	// Which world to judge: a snapshot id, delivery=<id> for the world a
+	// delivery made, or a label for the newest world with it. In .env:
+	// JEVAGREED_WORLD=delivery=<id>.
 	// +default="observed"
-	label string,
+	world string,
 	// +optional
 	resticRepository *dagger.Secret,
 	// +optional
@@ -198,7 +211,7 @@ func (m *Worlds) JevAgreed(
 	gcpServiceAccountKey *dagger.Secret,
 ) error {
 	store := Store{resticRepository, resticPassword, gcpServiceAccountKey}
-	return judged(ctx, store, base(harness), label, requiresPass)
+	return judged(ctx, store, base(harness), world, requiresPass)
 }
 
 const (
@@ -249,7 +262,7 @@ func (m *Worlds) CaptureWorld(
 		WithDirectory("/harness/world", harness.Directory("world")).
 		WithWorkdir("/harness").
 		WithDirectory(worldDir, world)
-	return Store{resticRepository, resticPassword, gcpServiceAccountKey}.Capture(ctx, c, checkName, label, run)
+	return Store{resticRepository, resticPassword, gcpServiceAccountKey}.Capture(ctx, c, checkName, label, run, "")
 }
 
 // What witness showed of both runs, as data for Reconcile.pkl: facts.json.

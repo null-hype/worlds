@@ -47,11 +47,12 @@ func (w Store) in(c *dagger.Container) *dagger.Container {
 }
 
 // Capture snapshots the producer's /world under the label and returns the
-// snapshot's id. The container needs world/world.sh in its working directory.
-func (w Store) Capture(ctx context.Context, producer *dagger.Container, check, label, run string) (string, error) {
+// snapshot's id. A delivery, when given, tags the world with the delivery that
+// made it (world.sh restore delivery=<id> selects it). The container needs world/world.sh in its working directory.
+func (w Store) Capture(ctx context.Context, producer *dagger.Container, check, label, run, delivery string) (string, error) {
 	out, err := w.in(producer).
 		WithEnvVariable("WORLD_CHECK", check).
-		WithExec([]string{"bash", "world/world.sh", "capture", worldDir, label, run}).
+		WithExec([]string{"bash", "world/world.sh", "capture", worldDir, label, run, delivery}).
 		Stdout(ctx)
 	return strings.TrimSpace(out), err
 }

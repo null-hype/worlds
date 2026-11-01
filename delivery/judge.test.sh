@@ -45,6 +45,17 @@ idn="$($store capture delivery/worlds/first-passing synthetic)"
 out="$($world "$id7" 2>&1)"
 ok "an id judges that snapshot, not the newest with its label" 'grep -q "^World: $id7 " <<< "$out" && grep -q "^Verdict: valid finding: Jev disagreement" <<< "$out"'
 
+# Judging the world of one delivery, not the newest of its label.
+idd="$($store capture delivery/worlds/run7 observed run7 delivery-a)"
+$store capture delivery/worlds/first-passing observed first-passing delivery-b > /dev/null
+out="$($world delivery=delivery-a pass 2>&1)"; code=$?
+ok "a delivery's world is judged, not the newer observed one: run 7 is not agreed" \
+  'grep -q "^World: $idd " <<< "$out" && grep -q "^Verdict: valid finding: Jev disagreement" <<< "$out" && [ "$code" = 1 ]'
+out="$($world observed pass 2>&1)"; code=$?
+ok "the label alone judges the newest observed world, here another delivery's" 'grep -q "Jev agreement" <<< "$out" && [ "$code" = 0 ]'
+$world delivery=delivery-c > /dev/null 2>&1; code=$?
+ok "a delivery with no world exits 2" '[ "$code" = 2 ]'
+
 # The snapshot is the world: what it was made from can change.
 cp -r delivery/worlds/run7 "$RESTIC_REPOSITORY.src" && $store capture "$RESTIC_REPOSITORY.src" mutable > /dev/null
 rm -rf "$RESTIC_REPOSITORY.src"
