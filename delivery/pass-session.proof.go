@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// +cache="never"
 func (m *Worlds) PassSessionCacheProof(ctx context.Context) (string, error) {
 	clock := dag.CacheVolume("pass-session-proof-" + time.Now().UTC().Format(time.RFC3339Nano))
 	c := dag.Container().From("node:22-bookworm").
